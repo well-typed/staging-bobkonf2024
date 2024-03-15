@@ -8,7 +8,7 @@ import Language.Haskell.TH.Syntax
 
 power :: Int -> Int -> Int
 power 0 _ = 1
-power n x = x * power (n - 1) x
+power n x = power (n - 1) x * x
 
 spower :: Quote m => Int -> Code m Int -> Code m Int
 spower = undefined
