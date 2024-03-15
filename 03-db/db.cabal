@@ -1,0 +1,14 @@
+cabal-version: 3.0
+name: db
+version: 0.1
+build-type: Simple
+
+library
+  default-language: GHC2021
+  build-depends:
+    base,
+    direct-sqlite,
+    template-haskell,
+    text
+  exposed-modules:
+    DB
