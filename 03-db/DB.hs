@@ -13,6 +13,9 @@ module DB where
 
 import Data.Text
 import Database.SQLite3
+import Data.Coerce
+import Language.Haskell.TH
+import Language.Haskell.TH.Syntax
 
 data Talk =
   MkTalk
@@ -62,37 +65,73 @@ target db =
 -- What if we want to employ datatype-generic programming to generate
 -- the above code?
 
-data SchemaDesc a where
-  Table      :: Text -> a -> SchemaDesc a
-  WithColumn :: SchemaDesc (a -> b) -> ColumnDesc a -> SchemaDesc a
+data SchemaDesc m a where
+  Table      :: Text -> Code m a -> SchemaDesc m a
+  WithColumn :: SchemaDesc m (a -> b) -> ColumnDesc a -> SchemaDesc m b
 
 data ColumnDesc a where
   IntC  :: ColumnDesc Int
   TextC :: ColumnDesc Text
   NullC :: ColumnDesc a -> ColumnDesc (Maybe a)
 
-talkSchema :: SchemaDesc Talk
+talkSchema :: Quote m => SchemaDesc m Talk
 talkSchema =
-  undefined
+  Table "talks" [|| MkTalk ||]
+  `WithColumn` TextC
+  `WithColumn` IntC
+  `WithColumn` NullC TextC
+  `WithColumn` TextC
+  `WithColumn` TextC
+  `WithColumn` TextC
 
-descSize :: SchemaDesc a -> Int
-descSize =
-  undefined
+descSize :: SchemaDesc m a -> Int
+descSize (Table _ _) = 0
+descSize (WithColumn d _) = 1 + descSize d
 
-getTable :: SchemaDesc a -> Text
-getTable =
-  undefined
+getTable :: SchemaDesc m a -> Text
+getTable (Table tn _) = tn
+getTable (WithColumn d _) = getTable d
 
-fetchField :: ColumnIndex -> ColumnDesc a -> Statement -> IO a
-fetchField =
-  undefined
+fetchField :: Quote m => ColumnIndex -> ColumnDesc a -> Code m Statement -> Code m (IO a)
+fetchField cix IntC stmt =
+  [|| fromIntegral <$> columnInt64 $$stmt $$(liftTyped cix) ||]
+fetchField cix TextC stmt =
+  [|| columnText $$stmt cix ||]
+fetchField cix (NullC d) stmt = [|| do
+    t <- columnType $$stmt $$(liftTyped cix)
+    case t of
+      NullColumn -> pure Nothing
+      _ -> Just <$> $$(fetchField cix d stmt)
+  ||]
 
-fetchRow :: SchemaDesc a -> Statement -> IO a
-fetchRow =
-  undefined
+deriving instance Lift ColumnIndex
 
-fetch :: SchemaDesc a -> Database -> IO [a]
-fetch =
-  undefined
+fetchRow :: Quote m => SchemaDesc m a -> Code m Statement -> Code m (IO a)
+fetchRow d stmt =
+  fetchRow' (coerce (descSize d)) d stmt
+
+fetchRow' :: Quote m => ColumnIndex -> SchemaDesc m a -> Code m Statement -> Code m (IO a)
+fetchRow' cix (Table _tn constr) _stmt =
+  [|| pure $$constr ||]
+fetchRow' cix (WithColumn d cd) stmt =
+  [|| $$(fetchRow' (cix - 1) d stmt) <*> $$(fetchField (cix - 1) cd stmt) ||]
+
+fetch :: Quote m => SchemaDesc m a -> Code m Database -> Code m (IO [a])
+fetch d db =
+  [||
+    let
+      q = "SELECT * FROM talks"
+
+      loop stmt = do
+        result <- step stmt
+        case result of
+          Done -> pure []
+          Row -> do
+            row <- $$(fetchRow d [|| stmt ||])
+            rows <- loop stmt
+            pure (row : rows)
+    in
+      withStatement $$db q loop
+  ||]
 
 -- To reduce the overhead, let's employ staging!
