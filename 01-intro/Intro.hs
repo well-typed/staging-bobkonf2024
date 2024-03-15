@@ -1,6 +1,15 @@
 {-# LANGUAGE TemplateHaskell #-}
 module Intro where
 
+-- Some other tutorials / talks:
+--
+-- Matthew Pickering
+-- Beautiful Template Haskell
+--
+-- Andres Löh
+-- Zero-overhead Abstractions in Haskell using Staging
+--
+
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
