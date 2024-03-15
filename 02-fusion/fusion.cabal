@@ -10,3 +10,4 @@ library
     template-haskell
   exposed-modules:
     Fusion
+    FusionStaged
